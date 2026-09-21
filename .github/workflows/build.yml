@@ -6,21 +6,10 @@ on:
       device:
         description: Target device codename
         required: true
-        default: lmi
+        default: elish
         type: choice
         options:
-          - lmi
-          - umi
-          - cmi
-          - thyme
-          - apollo
-          - cas
-          - alioth
-          - munch
-          - psyche
           - elish
-          - enuma
-          - dagu
       ksu:
         description: Enable KernelSU
         required: true
@@ -38,13 +27,13 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            bc bison build-essential ccache cpio curl flex \
+            bc bison build-essential ccache cpio curl flex libelf-dev libncurses-dev \
             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi git libssl-dev \
             python-is-python3 wget zip
 
