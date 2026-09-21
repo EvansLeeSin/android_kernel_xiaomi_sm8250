@@ -55,7 +55,7 @@ export PATH="/usr/lib/ccache:$PATH"
 echo "CCACHE_DIR: [$CCACHE_DIR]"
 
 
-MAKE_ARGS="ARCH=arm64 SUBARCH=arm64 O=out CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CROSS_COMPILE_COMPAT=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu-"
+MAKE_ARGS="ARCH=arm64 SUBARCH=arm64 O=out CC=clang LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CROSS_COMPILE_COMPAT=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu-"
 
 
 if [ "$1" == "j1" ]; then
@@ -68,10 +68,13 @@ if [ "$1" == "continue" ]; then
     exit
 fi
 
-if [ ! -f "arch/arm64/configs/${TARGET_DEVICE}_defconfig" ]; then
-    echo "No target device [${TARGET_DEVICE}] found."
-    echo "Avaliable defconfigs, please choose one target from below down:"
-    ls arch/arm64/configs/*_defconfig
+if [[ "$TARGET_DEVICE" != "elish" ]]; then
+    echo "This workflow is configured only for elish."
+    exit 1
+fi
+
+if [ ! -f "config/rom-kernel.config" ]; then
+    echo "config/rom-kernel.config is missing."
     exit 1
 fi
 
@@ -100,9 +103,7 @@ else
     echo "KSU is disabled"
 fi
 
-echo "Integrating Baseband-guard..."
-curl -LSs "https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh" | bash
-sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' security/Kconfig
+echo "Skipping Baseband-guard to preserve the LineageOS kernel behavior."
 
 
 echo "Cleaning..."
@@ -116,7 +117,9 @@ git clone https://github.com/liyafe1997/AnyKernel3 -b kona --single-branch --dep
 # ------------- Building for AOSP -------------
 
 echo "Building for AOSP......"
-make $MAKE_ARGS ${TARGET_DEVICE}_defconfig
+mkdir -p out
+cp config/rom-kernel.config out/.config
+make $MAKE_ARGS olddefconfig
 
 if [ $KSU_ENABLE -eq 1 ]; then
     scripts/config --file out/.config \
@@ -129,6 +132,10 @@ else
     scripts/config --file out/.config -d KSU
 fi
 
+# Match the working LineageOS kernel configuration: no LTO/CFI/SCS or KPROBES.
+scripts/config --file out/.config     -d LTO_CLANG     -d CFI_CLANG     -d SHADOW_CALL_STACK     -d KPROBES     -d MEMFD_ASHMEM_SHIM     -d KFENCE
+
+make $MAKE_ARGS olddefconfig
 make $MAKE_ARGS -j$(nproc) 
 
 
