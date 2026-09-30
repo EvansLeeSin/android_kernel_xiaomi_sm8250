@@ -90,7 +90,7 @@ clang --version
 KSU_ZIP_STR=NoKernelSU
 if [ "$2" == "ksu" ]; then
     KSU_ENABLE=1
-    KSU_ZIP_STR=ReSukiSU
+    KSU_ZIP_STR=ReSukiSU-SUSFS
 else
     KSU_ENABLE=0
 fi
@@ -103,6 +103,10 @@ if [ $KSU_ENABLE -eq 1 ]; then
     curl -fLSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/${RESUKISU_COMMIT}/kernel/setup.sh" -o /tmp/elish-resukisu-setup.sh
     bash /tmp/elish-resukisu-setup.sh "$RESUKISU_COMMIT"
     test "$(git -C KernelSU rev-parse HEAD)" = "$RESUKISU_COMMIT"
+    echo "Applying the reviewed elish SUSFS 2.3.0 integration patch"
+    echo "40a6f6f3631c13863d7ef63eb896ef7915dd08964d79109e15b487d1ac8e2777  patches/elish-susfs-2.3.0.patch" | sha256sum -c -
+    git apply --check patches/elish-susfs-2.3.0.patch
+    git apply patches/elish-susfs-2.3.0.patch
 else
     echo "KSU is disabled"
 fi
@@ -134,8 +138,18 @@ if [ $KSU_ENABLE -eq 1 ]; then
     -e KSU \
     -e THREAD_INFO_IN_TASK \
     -e REKERNEL \
-    -e KSU_MANUAL_HOOK \
-    -d KSU_SUSFS
+    -d KSU_MANUAL_HOOK \
+    -d KSU_TRACEPOINT_HOOK \
+    -e KSU_SUSFS \
+    -e KSU_SUSFS_SUS_PATH \
+    -e KSU_SUSFS_SUS_MOUNT \
+    -e KSU_SUSFS_SUS_KSTAT \
+    -e KSU_SUSFS_SPOOF_UNAME \
+    -e KSU_SUSFS_ENABLE_LOG \
+    -e KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
+    -e KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
+    -e KSU_SUSFS_OPEN_REDIRECT \
+    -e KSU_SUSFS_SUS_MAP
    
 else
     scripts/config --file out/.config -d KSU
@@ -147,8 +161,8 @@ scripts/config --file out/.config     -d LTO_CLANG     -d CFI_CLANG     -d SHADO
 make $MAKE_ARGS olddefconfig
 if [ $KSU_ENABLE -eq 1 ]; then
     grep -qx 'CONFIG_KSU=y' out/.config
-    grep -qx 'CONFIG_KSU_MANUAL_HOOK=y' out/.config
-    grep -qx '# CONFIG_KSU_SUSFS is not set' out/.config
+    grep -qx '# CONFIG_KSU_MANUAL_HOOK is not set' out/.config
+    grep -qx 'CONFIG_KSU_SUSFS=y' out/.config
 fi
 make $MAKE_ARGS -j$(nproc) 
 
@@ -166,8 +180,10 @@ cp out/.config kernel.config
     echo "resukisu_commit=$RESUKISU_COMMIT"
     echo "anykernel_commit=$ANYKERNEL_COMMIT"
     echo "device=$TARGET_DEVICE"
-    echo "hook=manual"
-    echo "susfs=disabled"
+    echo "hook=susfs-inline"
+    echo "susfs=v2.3.0"
+    echo "susfs_backport_commit=0b8a115ddd4125dbda533a607f8de8ef2a08d56e"
+    sha256sum patches/elish-susfs-2.3.0.patch
     echo "kpm=disabled"
     clang --version
     sha256sum config/rom-kernel.config kernel.config out/arch/arm64/boot/Image

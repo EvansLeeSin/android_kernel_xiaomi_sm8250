@@ -1,4 +1,4 @@
-name: Build Kernel
+name: Build SUSFS Kernel
 
 on:
   workflow_dispatch:
@@ -11,9 +11,9 @@ on:
         options:
           - elish
       ksu:
-        description: Enable KernelSU
+        description: Enable ReSukiSU with SUSFS 2.3.0
         required: true
-        default: false
+        default: true
         type: boolean
 
 permissions:
@@ -59,9 +59,10 @@ jobs:
       - name: Upload kernel artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-${{ inputs.device }}-${{ inputs.ksu && 'ksu' || 'no-ksu' }}-${{ github.sha }}
+          name: susfs-kernel-${{ inputs.device }}-${{ inputs.ksu && 'ksu' || 'no-ksu' }}-${{ github.sha }}
           if-no-files-found: error
           path: |
             Kernel_AOSP_${{ inputs.device }}_*.zip
             kernel.config
             build-info.txt
+
