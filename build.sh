@@ -3,11 +3,13 @@
 # Some logics of this script are copied from [scripts/build_kernel]. Thanks to UtsavBalar1231.
 
 # Ensure the script exits on error
-set -e
+set -eo pipefail
 
 TOOLCHAIN_PATH=$HOME/zyc-clang/bin
 GIT_COMMIT_ID=$(git rev-parse --short=8 HEAD)
 TARGET_DEVICE=$1
+RESUKISU_COMMIT=83850e8e93c5f7cfaec69cf03707f13e799df36a
+ANYKERNEL_COMMIT=1ae369a5004c1a577e9d1aa68f49d0c4f8627fc6
 
 if [ -z "$1" ]; then
     echo "Error: No argument provided, please specific a target device." 
@@ -88,7 +90,7 @@ clang --version
 KSU_ZIP_STR=NoKernelSU
 if [ "$2" == "ksu" ]; then
     KSU_ENABLE=1
-    KSU_ZIP_STR=KernelSU
+    KSU_ZIP_STR=ReSukiSU
 else
     KSU_ENABLE=0
 fi
@@ -98,7 +100,9 @@ echo "TARGET_DEVICE: $TARGET_DEVICE"
 
 if [ $KSU_ENABLE -eq 1 ]; then
     echo "KSU is enabled"
-    curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
+    curl -fLSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/${RESUKISU_COMMIT}/kernel/setup.sh" -o /tmp/elish-resukisu-setup.sh
+    bash /tmp/elish-resukisu-setup.sh "$RESUKISU_COMMIT"
+    test "$(git -C KernelSU rev-parse HEAD)" = "$RESUKISU_COMMIT"
 else
     echo "KSU is disabled"
 fi
@@ -112,7 +116,11 @@ rm -rf out/
 rm -rf anykernel/
 
 echo "Clone AnyKernel3 for packing kernel (repo: https://github.com/liyafe1997/AnyKernel3)"
-git clone https://github.com/liyafe1997/AnyKernel3 -b kona --single-branch --depth=1 anykernel
+git init anykernel
+git -C anykernel remote add origin https://github.com/liyafe1997/AnyKernel3
+git -C anykernel fetch --depth=1 origin "$ANYKERNEL_COMMIT"
+git -C anykernel checkout --detach FETCH_HEAD
+test "$(git -C anykernel rev-parse HEAD)" = "$ANYKERNEL_COMMIT"
 
 # ------------- Building for AOSP -------------
 
@@ -126,7 +134,8 @@ if [ $KSU_ENABLE -eq 1 ]; then
     -e KSU \
     -e THREAD_INFO_IN_TASK \
     -e REKERNEL \
-    -e KSU_MANUAL_HOOK
+    -e KSU_MANUAL_HOOK \
+    -d KSU_SUSFS
    
 else
     scripts/config --file out/.config -d KSU
@@ -136,6 +145,11 @@ fi
 scripts/config --file out/.config     -d LTO_CLANG     -d CFI_CLANG     -d SHADOW_CALL_STACK     -d KPROBES     -d MEMFD_ASHMEM_SHIM     -d KFENCE
 
 make $MAKE_ARGS olddefconfig
+if [ $KSU_ENABLE -eq 1 ]; then
+    grep -qx 'CONFIG_KSU=y' out/.config
+    grep -qx 'CONFIG_KSU_MANUAL_HOOK=y' out/.config
+    grep -qx '# CONFIG_KSU_SUSFS is not set' out/.config
+fi
 make $MAKE_ARGS -j$(nproc) 
 
 
@@ -145,6 +159,19 @@ else
     echo "The file [out/arch/arm64/boot/Image] does not exist. Seems AOSP build failed."
     exit 1
 fi
+
+cp out/.config kernel.config
+{
+    echo "kernel_source_commit=$(git rev-parse HEAD)"
+    echo "resukisu_commit=$RESUKISU_COMMIT"
+    echo "anykernel_commit=$ANYKERNEL_COMMIT"
+    echo "device=$TARGET_DEVICE"
+    echo "hook=manual"
+    echo "susfs=disabled"
+    echo "kpm=disabled"
+    clang --version
+    sha256sum config/rom-kernel.config kernel.config out/arch/arm64/boot/Image
+} > build-info.txt
 
 echo "Generating [out/arch/arm64/boot/dtb]......"
 find out/arch/arm64/boot/dts -name '*.dtb' -exec cat {} + >out/arch/arm64/boot/dtb
