@@ -22,7 +22,7 @@ permissions:
 jobs:
   build:
     name: Build ${{ inputs.device }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
 
     steps:
@@ -61,4 +61,7 @@ jobs:
         with:
           name: kernel-${{ inputs.device }}-${{ inputs.ksu && 'ksu' || 'no-ksu' }}-${{ github.sha }}
           if-no-files-found: error
-          path: Kernel_AOSP_${{ inputs.device }}_*.zip
+          path: |
+            Kernel_AOSP_${{ inputs.device }}_*.zip
+            kernel.config
+            build-info.txt
